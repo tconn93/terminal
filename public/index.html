@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Terminal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="container">
+    <div id="terminal"></div>
+    <div id="button-bar">
+      <div class="button-row">
+        <button id="ctrl-btn" class="key-btn">Ctrl</button>
+        <button id="dot-btn" class="key-btn char-btn">.</button>
+        <button id="slash-btn" class="key-btn char-btn">/</button>
+        <button id="tilde-btn" class="key-btn char-btn">~</button>
+      </div>
+      <div class="button-row arrow-row">
+        <button id="arrow-up-btn" class="key-btn arrow-btn">↑</button>
+        <button id="arrow-left-btn" class="key-btn arrow-btn">←</button>
+        <button id="arrow-down-btn" class="key-btn arrow-btn">↓</button>
+        <button id="arrow-right-btn" class="key-btn arrow-btn">→</button>
+      </div>
+      <div class="button-row">
+        <button id="mic-btn">🎤 Speak</button>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js" defer></script>
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
