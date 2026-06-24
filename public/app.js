@@ -6,7 +6,19 @@
     return;
   }
 
-  const socket = io();
+  // --- Session persistence via localStorage ---
+  // The sessionId maps to a named tmux session on the VM.
+  // The tmux session keeps running even when this page is closed or the browser
+  // goes to background, so apps inside it are never interrupted.
+  const storedSessionId = localStorage.getItem('terminalSessionId');
+
+  const socket = io({
+    auth: { sessionId: storedSessionId },
+    // Socket.IO will automatically attempt to reconnect on disconnect
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000
+  });
+
   const term = new Terminal({
     scrollback: 10000,
     fontSize: 14,
@@ -17,9 +29,71 @@
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
-  // Fit terminal and send dimensions to server
   fitAddon.fit();
-  socket.emit('resize', { cols: term.cols, rows: term.rows });
+
+  // --- Banner helpers ---
+  const banner = document.getElementById('status-banner');
+  const bannerMsg = document.getElementById('banner-message');
+  let bannerTimer = null;
+
+  function showBanner(message, type, autoDismissMs) {
+    clearTimeout(bannerTimer);
+    bannerMsg.textContent = message;
+    banner.className = 'banner ' + type;
+    if (autoDismissMs) {
+      bannerTimer = setTimeout(hideBanner, autoDismissMs);
+    }
+  }
+
+  function hideBanner() {
+    clearTimeout(bannerTimer);
+    banner.className = 'banner hidden';
+  }
+
+  // --- Socket connection state ---
+  socket.on('connect', () => {
+    // Send current terminal size once connected
+    socket.emit('resize', { cols: term.cols, rows: term.rows });
+  });
+
+  socket.on('disconnect', (reason) => {
+    const msg = reason === 'io server disconnect'
+      ? 'Disconnected by server. Click "New Session" to reconnect.'
+      : 'Connection lost — reconnecting...';
+    showBanner(msg, 'warning');
+  });
+
+  socket.on('connect_error', () => {
+    showBanner('Cannot reach server — retrying...', 'warning');
+  });
+
+  // --- Session lifecycle events ---
+  socket.on('session-created', (id) => {
+    localStorage.setItem('terminalSessionId', id);
+    hideBanner();
+    // Clear terminal for a clean start
+    term.reset();
+    fitAddon.fit();
+    socket.emit('resize', { cols: term.cols, rows: term.rows });
+  });
+
+  socket.on('session-resumed', (id) => {
+    localStorage.setItem('terminalSessionId', id);
+    // Clear stale client-side content; tmux will redraw the current screen
+    term.reset();
+    fitAddon.fit();
+    socket.emit('resize', { cols: term.cols, rows: term.rows });
+    showBanner('Reconnected to existing session', 'success', 3000);
+  });
+
+  socket.on('ssh-error', (message) => {
+    showBanner('SSH error: ' + message, 'error');
+  });
+
+  // --- Terminal I/O ---
+  socket.on('data', (data) => {
+    term.write(data);
+  });
 
   // Ctrl key toggle state
   let ctrlActive = false;
@@ -36,19 +110,19 @@
 
   // Arrow key buttons
   document.getElementById('arrow-up-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[A'); // Up arrow
+    socket.emit('data', '\x1b[A');
   });
 
   document.getElementById('arrow-down-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[B'); // Down arrow
+    socket.emit('data', '\x1b[B');
   });
 
   document.getElementById('arrow-right-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[C'); // Right arrow
+    socket.emit('data', '\x1b[C');
   });
 
   document.getElementById('arrow-left-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[D'); // Left arrow
+    socket.emit('data', '\x1b[D');
   });
 
   // Character buttons
@@ -64,6 +138,13 @@
     socket.emit('data', '~');
   });
 
+  // New Session button — kills the current tmux session on the VM and starts fresh
+  document.getElementById('new-session-btn').addEventListener('click', () => {
+    if (!confirm('Start a new session? The current session and all running processes will be terminated.')) return;
+    localStorage.removeItem('terminalSessionId');
+    socket.emit('new-session');
+  });
+
   // Relay terminal input to server with Ctrl modifier if active
   term.onData((data) => {
     if (ctrlActive && data.length === 1) {
@@ -72,26 +153,14 @@
 
       // Handle Ctrl+letter (a-z)
       if (code >= 97 && code <= 122) {
-        // Convert to Ctrl code (Ctrl+A = 1, Ctrl+B = 2, etc.)
         const ctrlCode = String.fromCharCode(code - 96);
         socket.emit('data', ctrlCode);
-        // Auto-release Ctrl after use
         ctrlActive = false;
         ctrlBtn.classList.remove('active');
         return;
       }
     }
     socket.emit('data', data);
-  });
-
-  // Receive output from server
-  socket.on('data', (data) => {
-    term.write(data);
-  });
-
-  // Handle errors from server
-  socket.on('error', (message) => {
-    term.write('\r\n\x1b[1;31mError: ' + message + '\x1b[0m\r\n');
   });
 
   // Microphone integration
@@ -106,9 +175,9 @@
     recognition.lang = 'en-US';
 
     recognition.onresult = (event) => {
-      const command = event.results[0][0].transcript + '\r\n'; // Add enter
-      term.write(command); // Echo to terminal
-      socket.emit('data', command); // Send to server
+      const command = event.results[0][0].transcript + '\r\n';
+      term.write(command);
+      socket.emit('data', command);
     };
 
     recognition.onerror = (event) => {
