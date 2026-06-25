@@ -1,16 +1,215 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { Server } = require('socket.io');
 const { Client } = require('ssh2');
 const { randomUUID } = require('crypto');
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
+
+// --- Session configuration ---
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET || 'change-me-to-a-random-string',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false,        // set true in production with HTTPS
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000  // 24 hours
+  }
+});
+
+app.use(sessionMiddleware);
+
+// --- Passport configuration ---
+// Only configure Google OAuth if credentials are provided
+const googleAuthConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
+if (googleAuthConfigured) {
+  passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/auth/google/callback'
+  }, (accessToken, refreshToken, profile, done) => {
+    // Accept any Google account — email restriction is handled by ensureAuth middleware
+    const user = {
+      id: profile.id,
+      displayName: profile.displayName,
+      email: profile.emails && profile.emails[0] ? profile.emails[0].value : null
+    };
+    return done(null, user);
+  }));
+}
+
+passport.serializeUser((user, done) => {
+  done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+  done(null, user);
+});
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+// --- Auth routes ---
+// GET /login — trigger Google OAuth (or show setup needed if not configured)
+app.get('/login', (req, res) => {
+  if (!googleAuthConfigured) {
+    return res.status(503).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Auth Not Configured</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+        .box { text-align: left; padding: 2rem; max-width: 600px; }
+        h1 { color: #e67e22; }
+        code { background: #333; padding: 2px 6px; border-radius: 3px; }
+        ol { line-height: 1.8; }
+      </style>
+      </head>
+      <body>
+        <div class="box">
+          <h1>Google OAuth Not Configured</h1>
+          <p>Set these environment variables in <code>.env</code> to enable login:</p>
+          <ol>
+            <li>Create a project at <a href="https://console.cloud.google.com/apis/credentials" style="color:#3498db;">Google Cloud Console</a></li>
+            <li>Add an OAuth 2.0 Client ID (Web application)</li>
+            <li>Set the authorized redirect URI to <code>http://localhost:3000/auth/google/callback</code></li>
+            <li>Copy the Client ID and Client Secret into <code>.env</code>:
+              <br><code>GOOGLE_CLIENT_ID=your-client-id</code>
+              <br><code>GOOGLE_CLIENT_SECRET=your-client-secret</code>
+              <br><code>SESSION_SECRET=any-random-string</code>
+            </li>
+            <li>Restart the server</li>
+          </ol>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res);
+});
+
+// GET /auth/google/callback — Google redirects here after consent
+app.get('/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    if (req.user && req.user.email === 'tyler@tyler.ag') {
+      return res.redirect('/');
+    }
+    // Wrong email — reject
+    req.logout(() => {
+      req.session.destroy(() => {
+        res.status(403).send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Access Denied</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+            .box { text-align: center; padding: 2rem; }
+            h1 { color: #e74c3c; }
+          </style>
+          </head>
+          <body>
+            <div class="box">
+              <h1>Access Denied</h1>
+              <p>This terminal is restricted to authorized users only.</p>
+            </div>
+          </body>
+          </html>
+        `);
+      });
+    });
+  }
+);
+
+// GET /logout
+app.get('/logout', (req, res) => {
+  req.logout(() => {
+    req.session.destroy(() => {
+      res.redirect('/login');
+    });
+  });
+});
+
+// --- Auth guard middleware ---
+function ensureAuth(req, res, next) {
+  if (!googleAuthConfigured) {
+    return res.redirect('/login');
+  }
+  if (req.isAuthenticated() && req.user && req.user.email === 'tyler@tyler.ag') {
+    return next();
+  }
+  if (req.isAuthenticated()) {
+    // Logged in but wrong email
+    return res.status(403).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Access Denied</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+        .box { text-align: center; padding: 2rem; }
+        h1 { color: #e74c3c; }
+      </style>
+      </head>
+      <body>
+        <div class="box">
+          <h1>Access Denied</h1>
+          <p>This terminal is restricted to authorized users only.</p>
+          <p><a href="/logout" style="color:#3498db;">Log out</a></p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+  // Not logged in — redirect to Google OAuth
+  res.redirect('/login');
+}
+
+// --- Protected routes ---
+app.get('/', ensureAuth, (req, res) => {
+  res.sendFile(__dirname + '/public/index.html');
+});
+
+// All static files and routes below require authentication
+app.use(ensureAuth);
+app.use(express.static('public', {
+  setHeaders: (res, path) => {
+    // Prevent caching so auth state is always fresh
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  }
+}));
+
+// --- Socket.IO with session sharing ---
 const io = new Server(server);
 
-app.use(express.static('public'));
+// Wrap express middleware for Socket.IO use
+const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
 
+io.use(wrap(sessionMiddleware));
+io.use(wrap(passport.initialize()));
+io.use(wrap(passport.session()));
+
+// Reject unauthenticated or unauthorized WebSocket connections
+io.use((socket, next) => {
+  if (socket.request.user && socket.request.user.email === 'tyler@tyler.ag') {
+    return next();
+  }
+  next(new Error('unauthorized'));
+});
+
+// --- SSH / tmux session management ---
 // In-memory map: sessionId -> tmuxName
 // tmux sessions on the VM persist independently of SSH/socket connections,
 // so apps keep running even when the browser disconnects.
@@ -26,7 +225,8 @@ function getSshConfig() {
 }
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  console.log('Client connected:', socket.id,
+    socket.request.user ? `(${socket.request.user.email})` : '');
 
   const sshConfig = getSshConfig();
   if (!sshConfig.host || !sshConfig.username || !sshConfig.password) {

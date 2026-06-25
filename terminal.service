@@ -1,0 +1,20 @@
+[Unit]
+Description=Terminal App (Node.js)
+Documentation=https://github.com/tconn93/terminal
+After=network.target
+
+[Service]
+Type=simple
+User=tcon
+WorkingDirectory=/home/tcon/terminal
+ExecStart=/home/tcon/.nvm/versions/node/v24.18.0/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
