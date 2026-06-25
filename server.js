@@ -213,19 +213,14 @@ app.post('/api/transcribe', ensureAuthApi, upload.single('audio'), async (req, r
   }
 
   try {
-    // Build multipart form for XAI STT endpoint
+    // Native xAI STT endpoint — only needs the file, no model param
     const formData = new FormData();
-    formData.append('model', XAI_STT_MODEL);
-    formData.append('response_format', 'text');
-
     const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
     formData.append('file', blob, 'recording.webm');
 
-    const response = await fetch('https://api.x.ai/v1/audio/transcriptions', {
+    const response = await fetch('https://api.x.ai/v1/stt', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${XAI_API_KEY}`
-      },
+      headers: { Authorization: `Bearer ${XAI_API_KEY}` },
       body: formData
     });
 
@@ -235,8 +230,8 @@ app.post('/api/transcribe', ensureAuthApi, upload.single('audio'), async (req, r
       return res.status(502).json({ error: `Grok STT failed: ${response.status}` });
     }
 
-    const text = await response.text();
-    res.json({ text: text.trim() });
+    const data = await response.json();
+    res.json({ text: (data.text || '').trim() });
   } catch (err) {
     console.error('Transcribe error:', err);
     res.status(500).json({ error: err.message });
@@ -299,6 +294,11 @@ app.post('/api/generate-command', ensureAuthApi, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// --- Public PWA assets (must be reachable before auth for install/offline to work) ---
+app.get('/manifest.json', (req, res) => res.sendFile(__dirname + '/public/manifest.json'));
+app.get('/sw.js', (req, res) => res.sendFile(__dirname + '/public/sw.js'));
+app.get('/icon.svg', (req, res) => res.sendFile(__dirname + '/public/icon.svg'));
 
 // --- Protected routes ---
 app.get('/', ensureAuth, (req, res) => {

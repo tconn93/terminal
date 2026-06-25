@@ -67,6 +67,7 @@ body, html {
   overflow: hidden;
   background: #000;
   padding: 4px 4px 0 4px;
+  box-shadow: inset 0 -4px 12px rgba(31, 111, 235, 0.06);
 }
 
 #terminal {
@@ -86,12 +87,32 @@ body, html {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 6px;
+  padding: 8px 6px 6px 6px;
   /* safe area inset for notched phones */
   padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   background: #161b22;
-  border-top: 1px solid #30363d;
+  border-top: none;
   z-index: 100;
+  position: relative;
+}
+
+/* Rainbow accent stripe at top of toolbar */
+#toolbar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #1f6feb 0%, #3fb950 35%, #bc8cff 65%, #1f6feb 100%);
+  background-size: 200% 100%;
+  animation: shimmer 6s linear infinite;
+  z-index: 1;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .toolbar-row {
@@ -111,10 +132,10 @@ body, html {
   font-size: 14px;
   font-family: inherit;
   font-weight: 600;
-  background: #21262d;
+  background: linear-gradient(180deg, #262c34 0%, #1d2128 100%);
   color: #c9d1d9;
   border: 1px solid #30363d;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s, border-color 0.15s, box-shadow 0.15s;
   flex: 1;
@@ -122,11 +143,13 @@ body, html {
   min-height: 44px;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
 .tb-btn:active {
-  transform: scale(0.94);
-  background: #30363d;
+  transform: scale(0.91);
+  background: linear-gradient(180deg, #30363d 0%, #21262d 100%);
+  box-shadow: 0 1px 1px rgba(0,0,0,0.4), inset 0 1px 2px rgba(0,0,0,0.4);
 }
 
 /* === Modifier Buttons (Ctrl, etc.) === */
@@ -147,14 +170,20 @@ body, html {
 .arrow-row {
   justify-content: center;
   gap: 6px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 12px;
+  padding: 4px;
+  margin: 0 -2px;
 }
 
 .arrow-btn {
   font-size: 24px;
   font-weight: 700;
-  flex: 0 0 calc(25% - 6px);
+  flex: 0 0 calc(25% - 10px);
   max-width: 70px;
   padding: 10px;
+  background: linear-gradient(180deg, #2a3140 0%, #1e252f 100%);
+  border-color: #3d4a5a;
 }
 
 /* === Accent Buttons (tmux) === */
@@ -285,6 +314,8 @@ body, html {
 .bottom-row .tb-btn {
   padding: 12px 10px;
   font-size: 15px;
+  min-height: 52px;
+  border-radius: 12px;
 }
 
 /* === Modal Overlay === */

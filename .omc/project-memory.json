@@ -1,0 +1,165 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1782359676707,
+  "projectRoot": "/mnt/c/Users/tyler/projects/terminal",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "express",
+        "version": "5.1.0",
+        "category": "backend"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "npm test",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "public"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 3,
+      "lastAccessed": 1782359676687,
+      "keyFiles": [
+        "app.js",
+        "index.html",
+        "style.css"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "public/style.css",
+      "accessCount": 8,
+      "lastAccessed": 1782360413910,
+      "type": "file"
+    },
+    {
+      "path": "server.js",
+      "accessCount": 4,
+      "lastAccessed": 1782360366207,
+      "type": "file"
+    },
+    {
+      "path": "public/app.js",
+      "accessCount": 3,
+      "lastAccessed": 1782360238001,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 2,
+      "lastAccessed": 1782359740897,
+      "type": "file"
+    },
+    {
+      "path": "public/index.html",
+      "accessCount": 2,
+      "lastAccessed": 1782360236635,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 1,
+      "lastAccessed": 1782359701135,
+      "type": "file"
+    },
+    {
+      "path": "Project.md",
+      "accessCount": 1,
+      "lastAccessed": 1782359701591,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 1,
+      "lastAccessed": 1782359701814,
+      "type": "file"
+    },
+    {
+      "path": "public/icon.svg",
+      "accessCount": 1,
+      "lastAccessed": 1782360224647,
+      "type": "file"
+    },
+    {
+      "path": "public/manifest.json",
+      "accessCount": 1,
+      "lastAccessed": 1782360225787,
+      "type": "file"
+    },
+    {
+      "path": "public/sw.js",
+      "accessCount": 1,
+      "lastAccessed": 1782360230961,
+      "type": "file"
+    },
+    {
+      "path": ".env.example",
+      "accessCount": 1,
+      "lastAccessed": 1782360374648,
+      "type": "file"
+    },
+    {
+      "path": "grokDocs/ChatAPI.md",
+      "accessCount": 1,
+      "lastAccessed": 1782361279079,
+      "type": "file"
+    },
+    {
+      "path": "grokDocs/SpeechToText.md",
+      "accessCount": 1,
+      "lastAccessed": 1782361279178,
+      "type": "file"
+    },
+    {
+      "path": "grokDocs/tools.md",
+      "accessCount": 1,
+      "lastAccessed": 1782361279916,
+      "type": "file"
+    },
+    {
+      "path": "grokDocs/VoiceAPI.md",
+      "accessCount": 1,
+      "lastAccessed": 1782361280068,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}
