@@ -29,7 +29,6 @@ if ('serviceWorker' in navigator) {
   // ============================================================
   const micBtn = document.getElementById('mic-btn');
   const micIcon = micBtn.querySelector('.mic-icon');
-  const micLabel = micBtn.querySelector('.mic-label');
   const modeBtn = document.getElementById('mode-btn');
   const modeLabel = document.getElementById('mode-label');
   const approveBtn = document.getElementById('approve-btn');
@@ -167,8 +166,11 @@ if ('serviceWorker' in navigator) {
     showBanner(msg, 'warning');
   });
 
-  socket.on('connect_error', () => {
-    showBanner('Cannot reach server — retrying...', 'warning');
+  socket.on('connect_error', (err) => {
+    const reason = err && err.message === 'unauthorized'
+      ? 'Not authorized — check login'
+      : 'Cannot reach server — retrying...';
+    showBanner(reason, 'warning');
   });
 
   socket.on('session-created', (id) => {
@@ -215,6 +217,16 @@ if ('serviceWorker' in navigator) {
   });
 
   // ============================================================
+  // Keep keyboard visible when tapping toolbar buttons.
+  // Toolbar button taps blur xterm.js's hidden textarea, which causes
+  // iOS to dismiss the on-screen keyboard. Refocus the terminal after
+  // any toolbar click to bring the keyboard back immediately.
+  // ============================================================
+  document.getElementById('toolbar').addEventListener('click', () => {
+    term.focus();
+  });
+
+  // ============================================================
   // Ctrl modifier button
   // ============================================================
   ctrlBtn.addEventListener('click', () => {
@@ -226,21 +238,49 @@ if ('serviceWorker' in navigator) {
     }
   });
 
+  // Esc button
+  document.getElementById('esc-btn').addEventListener('click', () => {
+    socket.emit('data', '\x1b');
+  });
+
   // ============================================================
-  // Arrow key buttons
+  // Arrow key buttons — hold to repeat
   // ============================================================
-  document.getElementById('arrow-up-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[A');
-  });
-  document.getElementById('arrow-down-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[B');
-  });
-  document.getElementById('arrow-left-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[D');
-  });
-  document.getElementById('arrow-right-btn').addEventListener('click', () => {
-    socket.emit('data', '\x1b[C');
-  });
+  const ARROW_REPEAT_DELAY = 400;  // ms before repeat starts
+  const ARROW_REPEAT_RATE  = 50;   // ms between repeats (~20/s)
+
+  function addArrowRepeat(btnId, seq) {
+    const btn = document.getElementById(btnId);
+    let repeatTimer = null;
+    let repeatInterval = null;
+
+    const stopRepeat = () => {
+      clearTimeout(repeatTimer);
+      clearInterval(repeatInterval);
+      repeatTimer = null;
+      repeatInterval = null;
+    };
+
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); // don't let the button steal focus from xterm
+      socket.emit('data', seq);          // fire immediately
+      stopRepeat();                       // safety: clear any stale timers
+      repeatTimer = setTimeout(() => {
+        repeatInterval = setInterval(() => {
+          socket.emit('data', seq);
+        }, ARROW_REPEAT_RATE);
+      }, ARROW_REPEAT_DELAY);
+    });
+
+    btn.addEventListener('pointerup', stopRepeat);
+    btn.addEventListener('pointerleave', stopRepeat);
+    btn.addEventListener('pointercancel', stopRepeat);
+  }
+
+  addArrowRepeat('arrow-up-btn',    '\x1b[A');
+  addArrowRepeat('arrow-down-btn',  '\x1b[B');
+  addArrowRepeat('arrow-left-btn',  '\x1b[D');
+  addArrowRepeat('arrow-right-btn', '\x1b[C');
 
   // ============================================================
   // Character buttons
@@ -574,19 +614,16 @@ if ('serviceWorker' in navigator) {
     if (state === true) {
       micActive = true;
       micIcon.textContent = '🔴';
-      micLabel.textContent = 'Stop';
       micBtn.classList.add('active');
       micBtn.classList.remove('processing');
     } else if (state === 'processing') {
       micActive = false;
       micIcon.textContent = '⏳';
-      micLabel.textContent = '...';
       micBtn.classList.remove('active');
       micBtn.classList.add('processing');
     } else {
       micActive = false;
       micIcon.textContent = '🎤';
-      micLabel.textContent = 'Mic';
       micBtn.classList.remove('active');
       micBtn.classList.remove('processing');
     }
@@ -601,20 +638,40 @@ if ('serviceWorker' in navigator) {
   });
 
   // ============================================================
-  // visualViewport — keep toolbar above mobile keyboard
+  // visualViewport — keep toolbar above mobile keyboard,
+  // re-fit terminal when layout changes, and toggle tmux copy
+  // mode when the keyboard is dismissed / brought back.
   // ============================================================
   if (window.visualViewport) {
     const toolbar = document.getElementById('toolbar');
+    const KB_THRESHOLD = 100; // pixels — viewport must shrink by at least this much to count as "keyboard visible"
+    let keyboardVisible = false;
+    let keyboardStateInitialized = false;
+
     const viewportHandler = () => {
       const viewport = window.visualViewport;
       const offset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      const nowVisible = offset > KB_THRESHOLD;
+
+      // Detect transitions (skip on the very first call)
+      if (keyboardStateInitialized && nowVisible !== keyboardVisible) {
+        if (nowVisible) {
+          // Keyboard came up → exit tmux copy mode
+          socket.emit('data', '\x1b');
+        } else {
+          // Keyboard dismissed → enter tmux copy mode
+          socket.emit('data', '\x02[');
+        }
+      }
+
+      keyboardVisible = nowVisible;
+      keyboardStateInitialized = true;
+
       // Push the toolbar up so it sits right above the on-screen keyboard
       toolbar.style.transform = `translateY(-${offset}px)`;
-      // Also adjust terminal container height
-      const container = document.getElementById('terminal-container');
-      if (container && offset > 0) {
-        // Give terminal room to breathe
-      }
+      // Re-fit terminal after keyboard show/hide so xterm recalculates its viewport
+      fitAddon.fit();
+      socket.emit('resize', { cols: term.cols, rows: term.rows });
     };
 
     window.visualViewport.addEventListener('resize', viewportHandler);

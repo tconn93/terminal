@@ -506,9 +506,17 @@ io.use(wrap(passport.session()));
 
 // Reject unauthenticated or unauthorized WebSocket connections
 io.use((socket, next) => {
-  if (socket.request.user && socket.request.user.email === 'tyler@tyler.ag') {
+  const hasSession = !!(socket.request.session && socket.request.session.passport);
+  const user = socket.request.user;
+  console.log('Socket.IO auth check:',
+    'hasSession:', hasSession,
+    'user:', user ? user.email : 'none',
+    'sessionID:', socket.request.sessionID || 'none');
+
+  if (user && user.email === 'tyler@tyler.ag') {
     return next();
   }
+  console.log('Socket.IO auth rejected:', hasSession ? 'wrong email: ' + (user ? user.email : 'null') : 'no session');
   next(new Error('unauthorized'));
 });
 
@@ -527,6 +535,63 @@ function getSshConfig() {
     password: process.env.VM_PWORD
   };
 }
+
+// --- Tmux session cleanup ---
+// Orphaned tmux sessions accumulate over time from browser testing,
+// server restarts, etc. Each one creates a login entry visible in `users`/`who`.
+// This cleans up unattached ws-* sessions on startup and periodically.
+
+function execOnVm(command, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const conn = new Client();
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      conn.end();
+      reject(new Error('Command timed out: ' + command));
+    }, timeoutMs);
+
+    conn.on('ready', () => {
+      conn.exec(command, (err, stream) => {
+        if (err) { clearTimeout(timer); conn.end(); return reject(err); }
+        stream.on('data', (chunk) => { stdout += chunk.toString('utf-8'); });
+        stream.stderr.on('data', (chunk) => { stderr += chunk.toString('utf-8'); });
+        stream.on('close', () => { clearTimeout(timer); conn.end(); resolve({ stdout, stderr }); });
+        stream.resume();
+      });
+    });
+    conn.on('error', (err) => { clearTimeout(timer); reject(err); });
+    conn.connect(getSshConfig());
+  });
+}
+
+async function cleanupOrphanedSessions() {
+  try {
+    const { stdout } = await execOnVm('tmux list-sessions -F "#{session_name} #{session_attached}" 2>/dev/null || true');
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    let killed = 0;
+    for (const line of lines) {
+      const [name, attached] = line.trim().split(/\s+/);
+      // Only touch sessions created by this app (ws- prefix) that are unattached
+      if (name && name.startsWith('ws-') && attached === '0') {
+        try {
+          await execOnVm(`tmux kill-session -t "${name}" 2>/dev/null; true`);
+          killed++;
+          console.log('Cleaned up orphaned tmux session:', name);
+        } catch (_) { /* session may already be gone */ }
+      }
+    }
+    if (killed > 0) console.log(`Cleaned up ${killed} orphaned ws-* tmux session(s)`);
+  } catch (err) {
+    console.error('Tmux cleanup error:', err.message);
+  }
+}
+
+// Run cleanup on startup (after a short delay to let SSH config settle)
+setTimeout(cleanupOrphanedSessions, 3000);
+
+// Periodic cleanup every 15 minutes
+setInterval(cleanupOrphanedSessions, 15 * 60 * 1000);
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id,
@@ -665,3 +730,22 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// --- Graceful shutdown ---
+// PM2 sends SIGINT on restart; without this handler the old process keeps the
+// port open long enough that the new process hits EADDRINUSE.
+function shutdown(signal) {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+  // Force exit if server.close() hangs (e.g. stuck sockets)
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
