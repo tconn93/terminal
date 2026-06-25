@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Web Terminal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -11,27 +14,108 @@
   <div id="status-banner" class="banner hidden">
     <span id="banner-message"></span>
   </div>
-  <div id="container">
-    <div id="terminal"></div>
-    <div id="button-bar">
-      <div class="button-row">
-        <button id="ctrl-btn" class="key-btn">Ctrl</button>
-        <button id="dot-btn" class="key-btn char-btn">.</button>
-        <button id="slash-btn" class="key-btn char-btn">/</button>
-        <button id="tilde-btn" class="key-btn char-btn">~</button>
+
+  <div id="app">
+    <!-- Terminal area -->
+    <div id="terminal-container">
+      <div id="terminal"></div>
+    </div>
+
+    <!-- Bottom toolbar -->
+    <div id="toolbar">
+      <!-- Row 1: Quick keys -->
+      <div class="toolbar-row">
+        <button id="ctrl-btn" class="tb-btn mod-btn" title="Ctrl modifier">Ctrl</button>
+        <button id="dot-btn" class="tb-btn char-btn">.</button>
+        <button id="slash-btn" class="tb-btn char-btn">/</button>
+        <button id="tilde-btn" class="tb-btn char-btn">~</button>
+        <button id="tmux-btn" class="tb-btn accent-btn" title="Tmux shortcuts">📟 Tmux</button>
       </div>
-      <div class="button-row arrow-row">
-        <button id="arrow-up-btn" class="key-btn arrow-btn">↑</button>
-        <button id="arrow-left-btn" class="key-btn arrow-btn">←</button>
-        <button id="arrow-down-btn" class="key-btn arrow-btn">↓</button>
-        <button id="arrow-right-btn" class="key-btn arrow-btn">→</button>
+
+      <!-- Row 2: Arrow keys (big, centered) -->
+      <div class="toolbar-row arrow-row">
+        <button id="arrow-up-btn" class="tb-btn arrow-btn" title="Up">↑</button>
+        <button id="arrow-left-btn" class="tb-btn arrow-btn" title="Left">←</button>
+        <button id="arrow-down-btn" class="tb-btn arrow-btn" title="Down">↓</button>
+        <button id="arrow-right-btn" class="tb-btn arrow-btn" title="Right">→</button>
       </div>
-      <div class="button-row">
-        <button id="new-session-btn" class="key-btn">+ New Session</button>
-        <button id="mic-btn">🎤 Speak</button>
+
+      <!-- Row 3: Mic, mode, approve/auto, and session controls -->
+      <div class="toolbar-row bottom-row">
+        <button id="mic-btn" class="tb-btn mic-btn" title="Tap to start/stop recording">
+          <span class="mic-icon">🎤</span>
+          <span class="mic-label">Mic</span>
+        </button>
+        <button id="mode-btn" class="tb-btn mode-btn mode-cli" title="Toggle between CLI and Verbatim mode">
+          <span id="mode-label">CLI</span>
+        </button>
+        <button id="approve-btn" class="tb-btn approve-btn approve-on" title="CLI: approve commands before running (tap for Auto)">
+          <span id="approve-label">✓ Approve</span>
+        </button>
+        <button id="new-session-btn" class="tb-btn danger-btn" title="Start a fresh terminal session">
+          <span>+ New</span>
+        </button>
       </div>
     </div>
   </div>
+
+  <!-- Tmux shortcuts modal -->
+  <div id="tmux-modal" class="modal-overlay hidden">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2>📟 Tmux Shortcuts</h2>
+        <button id="tmux-modal-close" class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Prefix is <kbd>Ctrl+B</kbd>. Tap a shortcut to send it.</p>
+        <div class="shortcut-grid">
+          <button class="shortcut-btn" data-seq="c">New Window<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>C</kbd></span></button>
+          <button class="shortcut-btn" data-seq=",">Rename Window<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>,</kbd></span></button>
+          <button class="shortcut-btn" data-seq="n">Next Window<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>N</kbd></span></button>
+          <button class="shortcut-btn" data-seq="p">Prev Window<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>P</kbd></span></button>
+          <button class="shortcut-btn" data-seq="&">Kill Window<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>&amp;</kbd></span></button>
+          <button class="shortcut-btn" data-seq="d">Detach<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>D</kbd></span></button>
+          <button class="shortcut-btn" data-seq="%">Split Vertical<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>%</kbd></span></button>
+          <button class="shortcut-btn" data-seq='"'>&#8203;Split Horizontal<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>"</kbd></span></button>
+          <button class="shortcut-btn" data-seq="\x1b[A">Pane Up<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>↑</kbd></span></button>
+          <button class="shortcut-btn" data-seq="\x1b[B">Pane Down<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>↓</kbd></span></button>
+          <button class="shortcut-btn" data-seq="\x1b[C">Pane Right<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>→</kbd></span></button>
+          <button class="shortcut-btn" data-seq="\x1b[D">Pane Left<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>←</kbd></span></button>
+          <button class="shortcut-btn" data-seq="x">Kill Pane<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>X</kbd></span></button>
+          <button class="shortcut-btn" data-seq="z">Zoom Pane<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>Z</kbd></span></button>
+          <button class="shortcut-btn" data-seq="[">Scroll Mode<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>[</kbd></span></button>
+          <button class="shortcut-btn" data-seq="]">Paste Buffer<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>]</kbd></span></button>
+          <button class="shortcut-btn" data-seq="s">List Sessions<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>S</kbd></span></button>
+          <button class="shortcut-btn" data-seq="w">List Windows<span class="shortcut-keys"><kbd>Ctrl+B</kbd> <kbd>W</kbd></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Processing overlay (shown while Grok is thinking) -->
+  <div id="processing-overlay" class="processing-overlay hidden">
+    <div class="processing-spinner"></div>
+    <span id="processing-text">Processing...</span>
+  </div>
+
+  <!-- Command approval modal -->
+  <div id="approve-modal" class="modal-overlay hidden">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2>🤖 Commands to Run</h2>
+        <button id="approve-modal-close" class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Grok generated these commands. Review before executing.</p>
+        <div id="approve-commands-list" class="approve-commands-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="approve-cancel-btn" class="tb-btn">Cancel</button>
+        <button id="approve-run-btn" class="tb-btn run-btn">▶ Run All</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js" defer></script>
   <script src="/socket.io/socket.io.js" defer></script>

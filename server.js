@@ -7,10 +7,25 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { Server } = require('socket.io');
 const { Client } = require('ssh2');
 const { randomUUID } = require('crypto');
+const multer = require('multer');
 
 const app = express();
 app.set('trust proxy', 1);
 const server = http.createServer(app);
+
+// --- Body parsing for API routes ---
+app.use(express.json());
+
+// --- Multer for audio uploads (in-memory) ---
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB max audio
+});
+
+// --- Grok (XAI) API configuration ---
+const XAI_API_KEY = process.env.XAI_API_KEY;
+const XAI_STT_MODEL = process.env.XAI_STT_MODEL || 'grok-2';
+const XAI_GENERATE_MODEL = process.env.XAI_GENERATE_MODEL || 'grok-3';
 
 // --- Session configuration ---
 const sessionMiddleware = session({
@@ -56,6 +71,52 @@ passport.deserializeUser((user, done) => {
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// --- Auth guard middleware ---
+function ensureAuth(req, res, next) {
+  if (!googleAuthConfigured) {
+    return res.redirect('/login');
+  }
+  if (req.isAuthenticated() && req.user && req.user.email === 'tyler@tyler.ag') {
+    return next();
+  }
+  if (req.isAuthenticated()) {
+    // Logged in but wrong email
+    return res.status(403).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Access Denied</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+        .box { text-align: center; padding: 2rem; }
+        h1 { color: #e74c3c; }
+      </style>
+      </head>
+      <body>
+        <div class="box">
+          <h1>Access Denied</h1>
+          <p>This terminal is restricted to authorized users only.</p>
+          <p><a href="/logout" style="color:#3498db;">Log out</a></p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+  // Not logged in — redirect to Google OAuth
+  res.redirect('/login');
+}
+
+// API auth guard — returns JSON errors instead of HTML redirects
+function ensureAuthApi(req, res, next) {
+  if (!googleAuthConfigured) {
+    return res.status(401).json({ error: 'Authentication not configured' });
+  }
+  if (req.isAuthenticated() && req.user && req.user.email === 'tyler@tyler.ag') {
+    return next();
+  }
+  return res.status(401).json({ error: 'Unauthorized' });
+}
 
 // --- Auth routes ---
 // GET /login — trigger Google OAuth (or show setup needed if not configured)
@@ -140,47 +201,111 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// --- Auth guard middleware ---
-function ensureAuth(req, res, next) {
-  if (!googleAuthConfigured) {
-    return res.redirect('/login');
+// --- Grok API proxy routes ---
+
+// POST /api/transcribe — audio to text via Grok STT
+app.post('/api/transcribe', ensureAuthApi, upload.single('audio'), async (req, res) => {
+  if (!XAI_API_KEY) {
+    return res.status(503).json({ error: 'XAI_API_KEY not configured on server' });
   }
-  if (req.isAuthenticated() && req.user && req.user.email === 'tyler@tyler.ag') {
-    return next();
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file provided' });
   }
-  if (req.isAuthenticated()) {
-    // Logged in but wrong email
-    return res.status(403).send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Access Denied</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
-        .box { text-align: center; padding: 2rem; }
-        h1 { color: #e74c3c; }
-      </style>
-      </head>
-      <body>
-        <div class="box">
-          <h1>Access Denied</h1>
-          <p>This terminal is restricted to authorized users only.</p>
-          <p><a href="/logout" style="color:#3498db;">Log out</a></p>
-        </div>
-      </body>
-      </html>
-    `);
+
+  try {
+    // Build multipart form for XAI STT endpoint
+    const formData = new FormData();
+    formData.append('model', XAI_STT_MODEL);
+    formData.append('response_format', 'text');
+
+    const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
+    formData.append('file', blob, 'recording.webm');
+
+    const response = await fetch('https://api.x.ai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${XAI_API_KEY}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Grok STT error:', response.status, errText);
+      return res.status(502).json({ error: `Grok STT failed: ${response.status}` });
+    }
+
+    const text = await response.text();
+    res.json({ text: text.trim() });
+  } catch (err) {
+    console.error('Transcribe error:', err);
+    res.status(500).json({ error: err.message });
   }
-  // Not logged in — redirect to Google OAuth
-  res.redirect('/login');
-}
+});
+
+// POST /api/generate-command — convert natural language to shell commands via Grok
+app.post('/api/generate-command', ensureAuthApi, async (req, res) => {
+  if (!XAI_API_KEY) {
+    return res.status(503).json({ error: 'XAI_API_KEY not configured on server' });
+  }
+
+  const { text } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'No text provided' });
+  }
+
+  try {
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${XAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: XAI_GENERATE_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a shell command generator. Convert the user\'s natural language request into raw shell commands. Output each command on its own line — they will be executed in sequence. No explanations, no markdown formatting, no code blocks, no quotes around commands, no "Here is the command", no emojis, nothing except the actual commands. Each line must be a valid shell command ready to paste into a terminal. For complex tasks, break them into individual sequential commands (one per line). If you need to chain dependent commands, use && on a single line. ALWAYS output at least one command.'
+          },
+          { role: 'user', content: text }
+        ],
+        temperature: 0,
+        max_tokens: 1000
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Grok generate error:', response.status, errText);
+      return res.status(502).json({ error: `Grok generate failed: ${response.status}` });
+    }
+
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || '';
+
+    // Parse response into individual commands (one per line, skip blanks and markdown artifacts)
+    const commands = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('```') && !line.startsWith('#') && line !== '')
+      // Strip any accidental markdown code fences
+      .map(line => line.replace(/^```\w*\s*/, '').replace(/\s*```$/, ''))
+      .filter(line => line.length > 0);
+
+    res.json({ commands, raw });
+  } catch (err) {
+    console.error('Generate command error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- Protected routes ---
 app.get('/', ensureAuth, (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-// All static files and routes below require authentication
+// All static files require authentication
 app.use(ensureAuth);
 app.use(express.static('public', {
   setHeaders: (res, path) => {

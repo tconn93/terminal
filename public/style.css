@@ -1,22 +1,36 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 body, html {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: monospace;
+  height: 100dvh;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a0a0a;
+  color: #c9d1d9;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
 
-/* Status banner — sits above the terminal, hidden by default */
+/* === Status Banner === */
 .banner {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: bold;
+  z-index: 200;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
   text-align: center;
-  transition: opacity 0.3s;
+  transition: opacity 0.3s, transform 0.3s;
+  transform: translateY(0);
 }
 
 .banner.hidden {
@@ -24,121 +38,552 @@ body, html {
 }
 
 .banner.warning {
-  background: #b45309;
-  color: #fef3c7;
+  background: #9a6700;
+  color: #fff;
 }
 
 .banner.error {
-  background: #991b1b;
-  color: #fee2e2;
+  background: #da3633;
+  color: #fff;
 }
 
 .banner.success {
-  background: #166534;
-  color: #dcfce7;
+  background: #238636;
+  color: #fff;
 }
 
-#container {
+/* === App Layout === */
+#app {
   display: flex;
   flex-direction: column;
   height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#terminal-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   background: #000;
+  padding: 4px 4px 0 4px;
 }
 
 #terminal {
-  flex: 1;
   width: 100%;
+  height: 100%;
 }
 
-#button-bar {
+/* Override xterm.js default padding so terminal fills container */
+#terminal .xterm-viewport {
+  /* Allow smooth momentum scrolling on mobile */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* === Toolbar === */
+#toolbar {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 5px;
-  background: #1a1a1a;
+  gap: 4px;
+  padding: 6px 6px;
+  /* safe area inset for notched phones */
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  z-index: 100;
 }
 
-.button-row {
+.toolbar-row {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   width: 100%;
-}
-
-.key-btn {
-  padding: 10px 15px;
-  font-size: 16px;
-  background: #333;
-  color: #fff;
-  border: 2px solid #555;
-  border-radius: 5px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: all 0.2s;
-  flex: 1;
-}
-
-.key-btn:active {
-  transform: scale(0.95);
-}
-
-.key-btn.active {
-  background: #0066cc;
-  border-color: #0088ff;
-  box-shadow: 0 0 10px rgba(0, 136, 255, 0.5);
-}
-
-.char-btn {
-  font-size: 20px;
-  min-width: 50px;
-}
-
-.arrow-btn {
-  font-size: 22px;
-  min-width: 60px;
-}
-
-.arrow-row {
   justify-content: center;
 }
 
-#mic-btn {
-  padding: 10px 20px;
-  font-size: 16px;
-  background: #333;
-  color: #fff;
-  border: 2px solid #555;
-  border-radius: 5px;
+/* === Toolbar Buttons (Base) === */
+.tb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 8px;
   cursor: pointer;
+  transition: background 0.15s, transform 0.1s, border-color 0.15s, box-shadow 0.15s;
   flex: 1;
-  transition: all 0.2s;
+  min-width: 44px;
+  min-height: 44px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tb-btn:active {
+  transform: scale(0.94);
+  background: #30363d;
+}
+
+/* === Modifier Buttons (Ctrl, etc.) === */
+.mod-btn.active {
+  background: #1f6feb;
+  border-color: #58a6ff;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(31, 111, 235, 0.5);
+}
+
+/* === Character Buttons === */
+.char-btn {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* === Arrow Buttons === */
+.arrow-row {
+  justify-content: center;
+  gap: 6px;
+}
+
+.arrow-btn {
+  font-size: 24px;
+  font-weight: 700;
+  flex: 0 0 calc(25% - 6px);
+  max-width: 70px;
+  padding: 10px;
+}
+
+/* === Accent Buttons (tmux) === */
+.accent-btn {
+  background: #1a2332;
+  border-color: #388bfd;
+  color: #58a6ff;
+  font-weight: 700;
+}
+
+/* === Mic Button === */
+.mic-btn {
+  gap: 4px;
+  font-weight: 600;
+}
+
+.mic-btn.active {
+  background: #da3633;
+  border-color: #f85149;
+  color: #fff;
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(248, 81, 73, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(248, 81, 73, 0.8); }
+}
+
+.mic-btn.processing {
+  background: #9a6700;
+  border-color: #d29922;
+  color: #fff;
+}
+
+/* === Mode Toggle Button === */
+.mode-btn.mode-cli {
+  background: #1a2332;
+  border-color: #1f6feb;
+  color: #58a6ff;
+  font-weight: 700;
+}
+
+.mode-btn.mode-verbatim {
+  background: #1a2e1a;
+  border-color: #238636;
+  color: #3fb950;
+  font-weight: 700;
+}
+
+/* === Approve/Auto Toggle Button === */
+.approve-btn {
+  font-weight: 700;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.approve-btn.approve-on {
+  background: #1a2e1a;
+  border-color: #238636;
+  color: #3fb950;
+}
+
+.approve-btn.approve-auto {
+  background: #2d1517;
+  border-color: #da3633;
+  color: #f85149;
+}
+
+/* === Approve Modal === */
+.modal-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 20px 16px;
+  border-top: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+.modal-footer .tb-btn {
+  flex: 1;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.run-btn {
+  background: #238636 !important;
+  border-color: #3fb950 !important;
+  color: #fff !important;
+}
+
+.approve-commands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.approve-command-item {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  color: #7ee787;
+  word-break: break-all;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  position: relative;
+}
+
+.approve-command-item .cmd-number {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: #484f58;
+  font-weight: 600;
+}
+
+/* === Danger Button (New Session) === */
+.danger-btn {
+  background: #2d1517;
+  border-color: #da3633;
+  color: #f85149;
+  font-weight: 700;
+}
+
+/* === Bottom Row (larger buttons) === */
+.bottom-row .tb-btn {
+  padding: 12px 10px;
+  font-size: 15px;
+}
+
+/* === Modal Overlay === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fade-in 0.2s ease;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-sheet {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 16px 16px 0 0;
   width: 100%;
+  max-width: 500px;
+  max-height: 75vh;
+  max-height: 75dvh;
+  display: flex;
+  flex-direction: column;
+  animation: slide-up 0.3s ease;
+  /* safe area for bottom of notched phones */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-#mic-btn:active {
-  transform: scale(0.95);
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px 20px;
+  border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #f0f6fc;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.modal-close-btn:active {
+  background: #30363d;
+}
+
+.modal-body {
+  overflow-y: auto;
+  padding: 12px 16px 20px 16px;
+  flex: 1;
+}
+
+.modal-hint {
+  font-size: 13px;
+  color: #8b949e;
+  margin: 0 0 12px 0;
+  text-align: center;
+}
+
+.modal-hint kbd {
+  display: inline-block;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-family: monospace;
+  color: #c9d1d9;
+}
+
+/* === Shortcut Grid === */
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.shortcut-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  color: #c9d1d9;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  text-align: left;
+  min-height: 56px;
+}
+
+.shortcut-btn:active {
+  background: #1f6feb;
+  border-color: #58a6ff;
+  transform: scale(0.96);
+}
+
+.shortcut-keys {
+  font-size: 11px;
+  color: #8b949e;
+  font-weight: 400;
+}
+
+.shortcut-keys kbd {
+  display: inline-block;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 10px;
+  color: #8b949e;
+}
+
+/* === Processing Overlay === */
+.processing-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 400;
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: fade-in 0.2s ease;
+}
+
+.processing-overlay.hidden {
+  display: none;
+}
+
+.processing-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+#processing-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+/* === Mobile Optimizations === */
 @media (max-width: 768px) {
-  .key-btn {
-    font-size: 18px;
-    padding: 12px 15px;
+  .toolbar-row {
+    gap: 3px;
+  }
+
+  .tb-btn {
+    padding: 10px 8px;
+    font-size: 13px;
+    min-height: 44px;
+    border-radius: 8px;
   }
 
   .char-btn {
-    font-size: 22px;
+    font-size: 18px;
   }
 
   .arrow-btn {
-    font-size: 24px;
+    font-size: 26px;
+    padding: 10px;
+    min-height: 48px;
   }
 
-  #mic-btn {
-    font-size: 18px;
-    padding: 15px 20px;
+  .bottom-row .tb-btn {
+    padding: 14px 10px;
+    font-size: 14px;
+    min-height: 50px;
   }
 
-  #new-session-btn {
-    font-size: 16px;
-    padding: 12px 10px;
+  .arrow-row {
+    gap: 4px;
   }
+
+  .modal-sheet {
+    border-radius: 16px 16px 0 0;
+    max-height: 70vh;
+    max-height: 70dvh;
+  }
+
+  .shortcut-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* === Small phone screens === */
+@media (max-width: 380px) {
+  .tb-btn {
+    padding: 8px 4px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+
+  .arrow-btn {
+    font-size: 22px;
+    padding: 8px;
+    min-height: 42px;
+  }
+
+  .shortcut-btn {
+    padding: 10px;
+    font-size: 13px;
+    min-height: 50px;
+  }
+}
+
+/* === Landscape / larger screens === */
+@media (min-width: 1024px) {
+  #toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    justify-content: center;
+  }
+
+  .toolbar-row {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .arrow-btn {
+    flex: 1 1 50px;
+    max-width: 60px;
+  }
+
+  .modal-sheet {
+    border-radius: 16px;
+    margin: auto;
+    max-height: 80vh;
+  }
+}
+
+/* === Touch-friendly scrollbar for the terminal === */
+#terminal .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+#terminal .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#terminal .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+
+/* === Allow text selection inside terminal === */
+#terminal {
+  -webkit-user-select: text;
+  user-select: text;
 }
