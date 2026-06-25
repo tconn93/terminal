@@ -66,14 +66,14 @@
   "hotPaths": [
     {
       "path": "server.js",
-      "accessCount": 11,
-      "lastAccessed": 1782361831832,
+      "accessCount": 14,
+      "lastAccessed": 1782362612434,
       "type": "file"
     },
     {
       "path": "public/app.js",
-      "accessCount": 10,
-      "lastAccessed": 1782361883519,
+      "accessCount": 14,
+      "lastAccessed": 1782362648585,
       "type": "file"
     },
     {
@@ -83,15 +83,21 @@
       "type": "file"
     },
     {
+      "path": "public/index.html",
+      "accessCount": 3,
+      "lastAccessed": 1782362129598,
+      "type": "file"
+    },
+    {
       "path": "CLAUDE.md",
       "accessCount": 2,
       "lastAccessed": 1782359740897,
       "type": "file"
     },
     {
-      "path": "public/index.html",
+      "path": "grokDocs/tools.md",
       "accessCount": 2,
-      "lastAccessed": 1782360236635,
+      "lastAccessed": 1782362129686,
       "type": "file"
     },
     {
@@ -146,12 +152,6 @@
       "path": "grokDocs/SpeechToText.md",
       "accessCount": 1,
       "lastAccessed": 1782361279178,
-      "type": "file"
-    },
-    {
-      "path": "grokDocs/tools.md",
-      "accessCount": 1,
-      "lastAccessed": 1782361279916,
       "type": "file"
     },
     {

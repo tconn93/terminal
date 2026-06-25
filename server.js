@@ -366,45 +366,37 @@ app.post('/api/agent', ensureAuthApi, async (req, res) => {
     });
   }
 
+  // Responses API format: flat tool definitions (not nested under "function")
   const tools = [
     {
       type: 'function',
-      function: {
-        name: 'bash_command',
-        description: 'Execute a shell command on the remote Linux VM and return its output',
-        parameters: {
-          type: 'object',
-          properties: {
-            command: { type: 'string', description: 'The shell command to execute' }
-          },
-          required: ['command']
-        }
+      name: 'bash_command',
+      description: 'Execute a shell command on the remote Linux VM and return its output',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'The shell command to execute' }
+        },
+        required: ['command']
       }
     },
     {
       type: 'function',
-      function: {
-        name: 'write_file',
-        description: 'Write or overwrite a file on the remote Linux VM with the given content',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Absolute path to the file' },
-            content: { type: 'string', description: 'Content to write to the file' }
-          },
-          required: ['path', 'content']
-        }
+      name: 'write_file',
+      description: 'Write or overwrite a file on the remote Linux VM with the given content',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Absolute path to the file' },
+          content: { type: 'string', description: 'Content to write to the file' }
+        },
+        required: ['path', 'content']
       }
     }
   ];
 
-  const messages = [
-    {
-      role: 'system',
-      content: 'You are a CLI agent running on a remote Linux VM. Use bash_command to execute shell commands and write_file to create or modify files. Be efficient and direct. When the task is complete, briefly summarize what was done.'
-    },
-    { role: 'user', content: text }
-  ];
+  // Stateless multi-turn: accumulate input items each iteration
+  const inputItems = [{ role: 'user', content: text }];
 
   try {
     const maxTurns = 10;
@@ -413,7 +405,7 @@ app.post('/api/agent', ensureAuthApi, async (req, res) => {
     while (turns < maxTurns) {
       turns++;
 
-      const grokResp = await fetch('https://api.x.ai/v1/chat/completions', {
+      const grokResp = await fetch('https://api.x.ai/v1/responses', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${XAI_API_KEY}`,
@@ -421,11 +413,9 @@ app.post('/api/agent', ensureAuthApi, async (req, res) => {
         },
         body: JSON.stringify({
           model: XAI_AGENT_MODEL,
-          messages,
-          tools,
-          tool_choice: 'auto',
-          temperature: 0,
-          max_tokens: 2000
+          instructions: 'You are a CLI agent running on a remote Linux VM. Use bash_command to execute shell commands and write_file to create or modify files. Be efficient and direct. When the task is complete, briefly summarize what was done.',
+          input: inputItems,
+          tools
         })
       });
 
@@ -436,44 +426,42 @@ app.post('/api/agent', ensureAuthApi, async (req, res) => {
       }
 
       const grokData = await grokResp.json();
-      const message = grokData.choices?.[0]?.message;
-      if (!message) return res.status(502).json({ error: 'Invalid response from Grok' });
+      const outputItems = grokData.output || [];
 
-      messages.push(message);
+      const functionCalls = outputItems.filter(item => item.type === 'function_call');
+      const messageItem = outputItems.find(item => item.type === 'message');
 
-      // No tool calls — agent is done
-      if (!message.tool_calls || message.tool_calls.length === 0) {
-        const reply = message.content || 'Done.';
+      // No function calls — agent is done
+      if (functionCalls.length === 0) {
+        const reply = messageItem?.content?.[0]?.text || 'Done.';
         if (agentSocket) agentSocket.emit('data', `\r\n\x1b[32m[Agent]\x1b[0m ${reply}\r\n`);
         return res.json({ response: reply, turns });
       }
 
-      // Execute tool calls
-      const toolResults = [];
-      for (const toolCall of message.tool_calls) {
-        const fnName = toolCall.function?.name;
+      // Append model output to input for next turn
+      inputItems.push(...outputItems);
+
+      // Execute each function call and collect results
+      for (const fc of functionCalls) {
         let args;
-        try { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch { args = {}; }
+        try { args = JSON.parse(fc.arguments || '{}'); } catch (e) { args = {}; }
 
         let result;
-        if (fnName === 'bash_command') {
-          const { command } = args;
-          if (agentSocket) agentSocket.emit('data', `\r\n\x1b[36m$ ${command}\x1b[0m\r\n`);
-          const r = await execOnVM(command);
+        if (fc.name === 'bash_command') {
+          if (agentSocket) agentSocket.emit('data', `\r\n\x1b[36m$ ${args.command}\x1b[0m\r\n`);
+          const r = await execOnVM(args.command);
           result = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}\nexit_code: ${r.exitCode}`;
-        } else if (fnName === 'write_file') {
-          const { path: fp, content } = args;
-          if (agentSocket) agentSocket.emit('data', `\r\n\x1b[33m[Writing: ${fp}]\x1b[0m\r\n`);
-          const r = await writeFileOnVM(fp, content);
-          result = r.exitCode === 0 ? `File written: ${fp}` : `Write failed: ${r.stderr}`;
+        } else if (fc.name === 'write_file') {
+          if (agentSocket) agentSocket.emit('data', `\r\n\x1b[33m[Writing: ${args.path}]\x1b[0m\r\n`);
+          const r = await writeFileOnVM(args.path, args.content);
+          result = r.exitCode === 0 ? `File written: ${args.path}` : `Write failed: ${r.stderr}`;
           if (agentSocket) agentSocket.emit('data', result + '\r\n');
         } else {
-          result = `Unknown tool: ${fnName}`;
+          result = `Unknown tool: ${fc.name}`;
         }
 
-        toolResults.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+        inputItems.push({ type: 'function_call_output', call_id: fc.call_id, output: result });
       }
-      messages.push(...toolResults);
     }
 
     const msg = 'Max agent turns reached';

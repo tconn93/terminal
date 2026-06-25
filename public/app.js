@@ -150,6 +150,9 @@ if ('serviceWorker' in navigator) {
     }
   }, { passive: true });
 
+  termContainer.addEventListener('touchend', () => { touchScrollY = 0; }, { passive: true });
+  termContainer.addEventListener('touchcancel', () => { touchScrollY = 0; }, { passive: true });
+
   // ============================================================
   // Socket event handlers
   // ============================================================
@@ -334,10 +337,16 @@ if ('serviceWorker' in navigator) {
   // ============================================================
   // Command approval modal
   // ============================================================
+  const approveModalHint = approveModal.querySelector('.modal-hint');
+  const APPROVE_TITLE_DEFAULT = '🤖 Commands to Run';
+  const APPROVE_HINT_DEFAULT = 'Grok generated these commands. Review before executing.';
+
   function showApproveModal(commands) {
     pendingCommands = commands;
     pendingAgentText = null;
-    if (approveModalTitle) approveModalTitle.textContent = 'Review Commands';
+    if (approveModalTitle) approveModalTitle.textContent = APPROVE_TITLE_DEFAULT;
+    if (approveModalHint) approveModalHint.textContent = APPROVE_HINT_DEFAULT;
+    approveRunBtn.textContent = '▶ Run All';
     approveCommandsList.innerHTML = commands.map((cmd, i) =>
       `<div class="approve-command-item"><span class="cmd-number">#${i + 1}</span>${escapeHtml(cmd)}</div>`
     ).join('');
@@ -347,7 +356,9 @@ if ('serviceWorker' in navigator) {
   function showAgentConfirmModal(transcript) {
     pendingCommands = [];
     pendingAgentText = transcript;
-    if (approveModalTitle) approveModalTitle.textContent = 'Send to Agent?';
+    if (approveModalTitle) approveModalTitle.textContent = '🤖 Send to Agent?';
+    if (approveModalHint) approveModalHint.textContent = 'Your voice command will be sent to the Grok agent, which will run commands on your VM.';
+    approveRunBtn.textContent = '▶ Run Agent';
     approveCommandsList.innerHTML = `<div class="approve-command-item">${escapeHtml(transcript)}</div>`;
     approveModal.classList.remove('hidden');
   }
@@ -356,7 +367,9 @@ if ('serviceWorker' in navigator) {
     approveModal.classList.add('hidden');
     pendingCommands = [];
     pendingAgentText = null;
-    if (approveModalTitle) approveModalTitle.textContent = 'Review Commands';
+    if (approveModalTitle) approveModalTitle.textContent = APPROVE_TITLE_DEFAULT;
+    if (approveModalHint) approveModalHint.textContent = APPROVE_HINT_DEFAULT;
+    approveRunBtn.textContent = '▶ Run All';
   }
 
   function escapeHtml(str) {
