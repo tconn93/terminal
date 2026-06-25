@@ -26,6 +26,7 @@ const upload = multer({
 const XAI_API_KEY = process.env.XAI_API_KEY;
 const XAI_STT_MODEL = process.env.XAI_STT_MODEL || 'grok-2';
 const XAI_GENERATE_MODEL = process.env.XAI_GENERATE_MODEL || 'grok-3';
+const XAI_AGENT_MODEL = process.env.XAI_AGENT_MODEL || 'grok-build-0.1';
 
 // --- Session configuration ---
 const sessionMiddleware = session({
@@ -295,6 +296,195 @@ app.post('/api/generate-command', ensureAuthApi, async (req, res) => {
   }
 });
 
+// POST /api/agent — agentic CLI loop: STT text → Grok with bash_command + write_file tools
+app.post('/api/agent', ensureAuthApi, async (req, res) => {
+  if (!XAI_API_KEY) {
+    return res.status(503).json({ error: 'XAI_API_KEY not configured on server' });
+  }
+
+  const { text, sessionId } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'No text provided' });
+  }
+
+  const agentSocket = sessionId ? socketBySession.get(sessionId) : null;
+
+  function execOnVM(command) {
+    return new Promise((resolve) => {
+      const conn = new Client();
+      let stdout = '';
+      let stderr = '';
+
+      conn.on('ready', () => {
+        conn.exec(command, (err, stream) => {
+          if (err) {
+            conn.end();
+            return resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+          }
+          stream.on('data', (chunk) => {
+            const t = chunk.toString('utf-8');
+            stdout += t;
+            if (agentSocket) agentSocket.emit('data', t);
+          });
+          stream.stderr.on('data', (chunk) => {
+            const t = chunk.toString('utf-8');
+            stderr += t;
+            if (agentSocket) agentSocket.emit('data', '\x1b[31m' + t + '\x1b[0m');
+          });
+          stream.on('close', (code) => {
+            conn.end();
+            resolve({ stdout, stderr, exitCode: code ?? 0 });
+          });
+        });
+      });
+      conn.on('error', (err) => resolve({ stdout: '', stderr: err.message, exitCode: 1 }));
+      conn.connect(getSshConfig());
+    });
+  }
+
+  function writeFileOnVM(filePath, content) {
+    return new Promise((resolve) => {
+      const conn = new Client();
+      conn.on('ready', () => {
+        const dir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+        conn.exec(`mkdir -p "${dir.replace(/"/g, '\\"')}"`, (err, mkStream) => {
+          if (err) { conn.end(); return resolve({ stdout: '', stderr: err.message, exitCode: 1 }); }
+          mkStream.on('close', () => {
+            conn.sftp((sftpErr, sftp) => {
+              if (sftpErr) { conn.end(); return resolve({ stdout: '', stderr: sftpErr.message, exitCode: 1 }); }
+              const ws = sftp.createWriteStream(filePath);
+              ws.on('error', (e) => { conn.end(); resolve({ stdout: '', stderr: e.message, exitCode: 1 }); });
+              ws.on('finish', () => { conn.end(); resolve({ stdout: `Written: ${filePath}`, stderr: '', exitCode: 0 }); });
+              ws.end(content, 'utf8');
+            });
+          });
+          mkStream.resume();
+        });
+      });
+      conn.on('error', (err) => resolve({ stdout: '', stderr: err.message, exitCode: 1 }));
+      conn.connect(getSshConfig());
+    });
+  }
+
+  const tools = [
+    {
+      type: 'function',
+      function: {
+        name: 'bash_command',
+        description: 'Execute a shell command on the remote Linux VM and return its output',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'The shell command to execute' }
+          },
+          required: ['command']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'write_file',
+        description: 'Write or overwrite a file on the remote Linux VM with the given content',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Absolute path to the file' },
+            content: { type: 'string', description: 'Content to write to the file' }
+          },
+          required: ['path', 'content']
+        }
+      }
+    }
+  ];
+
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are a CLI agent running on a remote Linux VM. Use bash_command to execute shell commands and write_file to create or modify files. Be efficient and direct. When the task is complete, briefly summarize what was done.'
+    },
+    { role: 'user', content: text }
+  ];
+
+  try {
+    const maxTurns = 10;
+    let turns = 0;
+
+    while (turns < maxTurns) {
+      turns++;
+
+      const grokResp = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${XAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: XAI_AGENT_MODEL,
+          messages,
+          tools,
+          tool_choice: 'auto',
+          temperature: 0,
+          max_tokens: 2000
+        })
+      });
+
+      if (!grokResp.ok) {
+        const errText = await grokResp.text();
+        console.error('Grok agent error:', grokResp.status, errText);
+        return res.status(502).json({ error: `Grok agent error ${grokResp.status}: ${errText}` });
+      }
+
+      const grokData = await grokResp.json();
+      const message = grokData.choices?.[0]?.message;
+      if (!message) return res.status(502).json({ error: 'Invalid response from Grok' });
+
+      messages.push(message);
+
+      // No tool calls — agent is done
+      if (!message.tool_calls || message.tool_calls.length === 0) {
+        const reply = message.content || 'Done.';
+        if (agentSocket) agentSocket.emit('data', `\r\n\x1b[32m[Agent]\x1b[0m ${reply}\r\n`);
+        return res.json({ response: reply, turns });
+      }
+
+      // Execute tool calls
+      const toolResults = [];
+      for (const toolCall of message.tool_calls) {
+        const fnName = toolCall.function?.name;
+        let args;
+        try { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch { args = {}; }
+
+        let result;
+        if (fnName === 'bash_command') {
+          const { command } = args;
+          if (agentSocket) agentSocket.emit('data', `\r\n\x1b[36m$ ${command}\x1b[0m\r\n`);
+          const r = await execOnVM(command);
+          result = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}\nexit_code: ${r.exitCode}`;
+        } else if (fnName === 'write_file') {
+          const { path: fp, content } = args;
+          if (agentSocket) agentSocket.emit('data', `\r\n\x1b[33m[Writing: ${fp}]\x1b[0m\r\n`);
+          const r = await writeFileOnVM(fp, content);
+          result = r.exitCode === 0 ? `File written: ${fp}` : `Write failed: ${r.stderr}`;
+          if (agentSocket) agentSocket.emit('data', result + '\r\n');
+        } else {
+          result = `Unknown tool: ${fnName}`;
+        }
+
+        toolResults.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+      }
+      messages.push(...toolResults);
+    }
+
+    const msg = 'Max agent turns reached';
+    if (agentSocket) agentSocket.emit('data', `\r\n\x1b[31m[Agent]\x1b[0m ${msg}\r\n`);
+    return res.json({ response: msg, turns });
+  } catch (err) {
+    console.error('Agent error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Public PWA assets (must be reachable before auth for install/offline to work) ---
 app.get('/manifest.json', (req, res) => res.sendFile(__dirname + '/public/manifest.json'));
 app.get('/sw.js', (req, res) => res.sendFile(__dirname + '/public/sw.js'));
@@ -339,6 +529,7 @@ io.use((socket, next) => {
 // tmux sessions on the VM persist independently of SSH/socket connections,
 // so apps keep running even when the browser disconnects.
 const sessions = new Map();
+const socketBySession = new Map(); // sessionId -> socket (for /api/agent tool use)
 
 function getSshConfig() {
   return {
@@ -429,6 +620,7 @@ io.on('connection', (socket) => {
   }
 
   startSshConnection();
+  socketBySession.set(sessionId, socket);
 
   socket.on('data', (data) => {
     if (stream) stream.write(data);
@@ -467,6 +659,7 @@ io.on('connection', (socket) => {
     sessions.set(sessionId, tmuxName);
     console.log('Created new session:', sessionId, '-> tmux:', tmuxName);
     socket.emit('session-created', sessionId);
+    socketBySession.set(sessionId, socket);
 
     startSshConnection();
   });
@@ -475,6 +668,7 @@ io.on('connection', (socket) => {
     // Close the SSH connection. The tmux session on the VM keeps running,
     // so any apps inside it continue uninterrupted.
     console.log('Client disconnected, tmux session preserved:', tmuxName);
+    socketBySession.delete(sessionId);
     if (conn) conn.end();
   });
 });

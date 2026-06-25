@@ -65,21 +65,21 @@
   },
   "hotPaths": [
     {
-      "path": "public/style.css",
-      "accessCount": 8,
-      "lastAccessed": 1782360413910,
-      "type": "file"
-    },
-    {
       "path": "server.js",
-      "accessCount": 4,
-      "lastAccessed": 1782360366207,
+      "accessCount": 11,
+      "lastAccessed": 1782361831832,
       "type": "file"
     },
     {
       "path": "public/app.js",
-      "accessCount": 3,
-      "lastAccessed": 1782360238001,
+      "accessCount": 10,
+      "lastAccessed": 1782361883519,
+      "type": "file"
+    },
+    {
+      "path": "public/style.css",
+      "accessCount": 9,
+      "lastAccessed": 1782361931396,
       "type": "file"
     },
     {

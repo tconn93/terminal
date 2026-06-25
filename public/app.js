@@ -22,6 +22,7 @@ if ('serviceWorker' in navigator) {
   let mediaRecorder = null;
   let audioChunks = [];
   let pendingCommands = [];        // commands awaiting approval
+  let pendingAgentText = null;     // transcript waiting for agent confirmation
 
   // ============================================================
   // DOM Elements
@@ -38,6 +39,7 @@ if ('serviceWorker' in navigator) {
   const tmuxModal = document.getElementById('tmux-modal');
   const tmuxModalClose = document.getElementById('tmux-modal-close');
   const approveModal = document.getElementById('approve-modal');
+  const approveModalTitle = approveModal.querySelector('.modal-header h2');
   const approveModalClose = document.getElementById('approve-modal-close');
   const approveCancelBtn = document.getElementById('approve-cancel-btn');
   const approveRunBtn = document.getElementById('approve-run-btn');
@@ -128,6 +130,25 @@ if ('serviceWorker' in navigator) {
   term.open(document.getElementById('terminal'));
 
   fitAddon.fit();
+
+  // ============================================================
+  // Mobile touch scroll — map finger drag to terminal scrollLines
+  // ============================================================
+  let touchScrollY = 0;
+  const termContainer = document.getElementById('terminal-container');
+
+  termContainer.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) touchScrollY = e.touches[0].clientY;
+  }, { passive: true });
+
+  termContainer.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1) {
+      const delta = touchScrollY - e.touches[0].clientY;
+      touchScrollY = e.touches[0].clientY;
+      const lines = Math.round(delta / 20);
+      if (lines !== 0) term.scrollLines(lines);
+    }
+  }, { passive: true });
 
   // ============================================================
   // Socket event handlers
@@ -315,15 +336,27 @@ if ('serviceWorker' in navigator) {
   // ============================================================
   function showApproveModal(commands) {
     pendingCommands = commands;
+    pendingAgentText = null;
+    if (approveModalTitle) approveModalTitle.textContent = 'Review Commands';
     approveCommandsList.innerHTML = commands.map((cmd, i) =>
       `<div class="approve-command-item"><span class="cmd-number">#${i + 1}</span>${escapeHtml(cmd)}</div>`
     ).join('');
     approveModal.classList.remove('hidden');
   }
 
+  function showAgentConfirmModal(transcript) {
+    pendingCommands = [];
+    pendingAgentText = transcript;
+    if (approveModalTitle) approveModalTitle.textContent = 'Send to Agent?';
+    approveCommandsList.innerHTML = `<div class="approve-command-item">${escapeHtml(transcript)}</div>`;
+    approveModal.classList.remove('hidden');
+  }
+
   function hideApproveModal() {
     approveModal.classList.add('hidden');
     pendingCommands = [];
+    pendingAgentText = null;
+    if (approveModalTitle) approveModalTitle.textContent = 'Review Commands';
   }
 
   function escapeHtml(str) {
@@ -340,8 +373,24 @@ if ('serviceWorker' in navigator) {
   });
 
   approveRunBtn.addEventListener('click', () => {
-    executeCommands(pendingCommands);
-    hideApproveModal();
+    if (pendingAgentText) {
+      const agentText = pendingAgentText;
+      hideApproveModal();
+      showProcessing('Agent running...');
+      const sessionId = localStorage.getItem('terminalSessionId');
+      fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: agentText, sessionId })
+      }).catch(err => {
+        showBanner('Agent error: ' + err.message, 'error', 5000);
+      }).finally(() => {
+        hideProcessing();
+      });
+    } else {
+      executeCommands(pendingCommands);
+      hideApproveModal();
+    }
   });
 
   // ============================================================
@@ -443,38 +492,30 @@ if ('serviceWorker' in navigator) {
             updateMicUI(false);
             socket.emit('data', transcript + '\r');
           } else {
-            // CLI mode: convert to commands via Grok
-            processingText.textContent = 'Generating commands...';
-
-            const generateResp = await fetch('/api/generate-command', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: transcript })
-            });
-
-            hideProcessing();
-            updateMicUI(false);
-
-            if (!generateResp.ok) {
-              const err = await generateResp.json();
-              showBanner('Command generation failed: ' + (err.error || 'unknown'), 'error', 5000);
-              return;
-            }
-
-            const generateData = await generateResp.json();
-            const commands = generateData.commands || [];
-
-            if (commands.length === 0) {
-              showBanner('No commands generated — try rephrasing', 'warning', 3000);
-              return;
-            }
-
-            if (approveMode === 'auto') {
-              // Auto mode: execute immediately
-              executeCommands(commands);
+            // CLI mode: Grok agent with bash_command + write_file tools
+            if (approveMode === 'approve') {
+              // Show transcript for confirmation before running agent
+              hideProcessing();
+              updateMicUI(false);
+              showAgentConfirmModal(transcript);
             } else {
-              // Approve mode: show modal for user review
-              showApproveModal(commands);
+              // Auto mode: run agent immediately
+              processingText.textContent = 'Agent running...';
+              try {
+                const sessionId = localStorage.getItem('terminalSessionId');
+                const agentResp = await fetch('/api/agent', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: transcript, sessionId })
+                });
+                if (!agentResp.ok) {
+                  const errData = await agentResp.json().catch(() => ({ error: 'Unknown error' }));
+                  showBanner('Agent error: ' + (errData.error || 'Unknown'), 'error', 5000);
+                }
+              } finally {
+                hideProcessing();
+                updateMicUI(false);
+              }
             }
           }
         } catch (err) {

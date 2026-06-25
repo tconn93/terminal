@@ -571,14 +571,28 @@ body, html {
   }
 }
 
-/* === Landscape / larger screens === */
+/* === Desktop / larger screens (≥1024px) === */
 @media (min-width: 1024px) {
+  /* Center the app with a max-width on wide monitors */
+  body {
+    background: #050505;
+  }
+
+  #app {
+    max-width: 1400px;
+    margin: 0 auto;
+    box-shadow: 0 0 0 1px #21262d, 0 0 40px rgba(0,0,0,0.6);
+    height: 100dvh;
+  }
+
+  /* Compact single-row toolbar on desktop */
   #toolbar {
     flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 12px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 8px 20px;
     padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    align-items: center;
     justify-content: center;
   }
 
@@ -587,9 +601,29 @@ body, html {
     width: auto;
   }
 
-  .arrow-btn {
-    flex: 1 1 50px;
-    max-width: 60px;
+  /* Hide arrow row on desktop — use keyboard arrows */
+  .arrow-row {
+    display: none;
+  }
+
+  .tb-btn {
+    font-size: 13px;
+    padding: 8px 14px;
+    min-height: 38px;
+    min-width: 46px;
+  }
+
+  .bottom-row .tb-btn {
+    min-height: 38px;
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+
+  /* Divider between char row and action row */
+  .bottom-row {
+    border-left: 1px solid #21262d;
+    padding-left: 8px;
+    margin-left: 4px;
   }
 
   .modal-sheet {
