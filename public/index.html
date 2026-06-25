@@ -25,40 +25,31 @@
       <div id="terminal"></div>
     </div>
 
-    <!-- Bottom toolbar -->
+    <!-- Bottom toolbar — single horizontally-swipeable row -->
     <div id="toolbar">
-      <!-- Row 1: Quick keys -->
-      <div class="toolbar-row">
+      <div class="toolbar-scroll">
         <button id="ctrl-btn" class="tb-btn mod-btn" title="Ctrl modifier">Ctrl</button>
+        <button id="esc-btn" class="tb-btn mod-btn" title="Escape">Esc</button>
         <button id="dot-btn" class="tb-btn char-btn">.</button>
         <button id="slash-btn" class="tb-btn char-btn">/</button>
         <button id="tilde-btn" class="tb-btn char-btn">~</button>
-        <button id="tmux-btn" class="tb-btn accent-btn" title="Tmux shortcuts">📟 Tmux</button>
-      </div>
-
-      <!-- Row 2: Arrow keys (big, centered) -->
-      <div class="toolbar-row arrow-row">
         <button id="arrow-up-btn" class="tb-btn arrow-btn" title="Up">↑</button>
         <button id="arrow-left-btn" class="tb-btn arrow-btn" title="Left">←</button>
         <button id="arrow-down-btn" class="tb-btn arrow-btn" title="Down">↓</button>
         <button id="arrow-right-btn" class="tb-btn arrow-btn" title="Right">→</button>
-      </div>
-
-      <!-- Row 3: Mic, mode, approve/auto, and session controls -->
-      <div class="toolbar-row bottom-row">
         <button id="mic-btn" class="tb-btn mic-btn" title="Tap to start/stop recording">
           <span class="mic-icon">🎤</span>
-          <span class="mic-label">Mic</span>
         </button>
-        <button id="mode-btn" class="tb-btn mode-btn mode-cli" title="Toggle between CLI and Verbatim mode">
+        <button id="mode-btn" class="tb-btn mode-btn mode-cli" title="Toggle CLI/Verbatim">
           <span id="mode-label">CLI</span>
         </button>
-        <button id="approve-btn" class="tb-btn approve-btn approve-on" title="CLI: approve commands before running (tap for Auto)">
-          <span id="approve-label">✓ Approve</span>
+        <button id="approve-btn" class="tb-btn approve-btn approve-on" title="Approve commands (tap for Auto)">
+          <span id="approve-label">✓</span>
         </button>
-        <button id="new-session-btn" class="tb-btn danger-btn" title="Start a fresh terminal session">
-          <span>+ New</span>
+        <button id="new-session-btn" class="tb-btn danger-btn" title="New session">
+          <span>+New</span>
         </button>
+        <button id="tmux-btn" class="tb-btn accent-btn" title="Tmux shortcuts">📟</button>
       </div>
     </div>
   </div>
